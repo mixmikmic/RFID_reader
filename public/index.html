@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RFID Tag Reader via Serial Port</title>
+    <style>
+        #scanHistory { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>RFID Tag Reader via Serial Port</h1>
+    <button id="connectButton">Connect to RFID Reader</button>
+    <ol id="scanHistory"></ol>
+    <script>
+        const connectButton = document.getElementById('connectButton');
+        const historyList = document.getElementById('scanHistory');
+        const scannedTags = new Set(); // Set to store unique scanned tags
+
+        connectButton.addEventListener('click', async () => {
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+
+                const reader = port.readable.getReader();
+                let decoder = new TextDecoder("utf-8");
+                let buffer = "";
+
+                connectButton.disabled = true;
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        reader.releaseLock();
+                        break;
+                    }
+                    buffer += decoder.decode(value);
+                    buffer = processReceivedData(buffer);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        function processReceivedData(buffer) {
+            const prefix = String.fromCharCode(0x02); // Hex02
+            const suffix = String.fromCharCode(0x03); // Hex03
+            let start = 0, end = 0;
+
+            while ((start = buffer.indexOf(prefix, end)) !== -1 && (end = buffer.indexOf(suffix, start + 1)) !== -1) {
+                const tag = buffer.substring(start + 1, end); // Extract the tag between prefix and suffix
+                if (!scannedTags.has(tag) && tag.length === 34) {
+                    console.log('RFID Tag Scanned:', tag);
+                    scannedTags.add(tag);
+
+                    const listItem = document.createElement('li');
+                    listItem.textContent = tag;
+                    historyList.appendChild(listItem);
+                } else {
+                    console.log('Duplicate or Invalid Length RFID Tag Ignored:', tag);
+                }
+                end += 1; // Move past the last suffix
+            }
+            return buffer.slice(end); // Return the unprocessed remainder of the buffer
+        }
+    </script>
+</body>
+</html>
